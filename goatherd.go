@@ -1,8 +1,6 @@
 package goatherd
 
-import (
-    "log"
-)
+import "log"
 
 var programs map[string]*Program
 var config *Config
@@ -19,6 +17,7 @@ func init() {
         program.Name = name
         programs[name] = &program
     }
+    /* fmt.Printf("config:%+v", *config) */
 }
 
 func RunAll() {
