@@ -1,20 +1,19 @@
 package main
 
 import (
-    "log"
-    "os"
-    "strconv"
+    "flag"
 
     "goatherd/model/slave"
 )
 
+var port int
+
+func init() {
+    flag.IntVar(&port, "port", 8000, "slave服务端口")
+}
+
 func main() {
-    if len(os.Args) != 2 {
-        log.Fatal("bad params")
-    }
-    if port, err := strconv.Atoi(os.Args[1]); err != nil {
-        log.Fatal("bad port")
-    } else {
-        slave.StartNewRpcServer(port)
-    }
+    flag.Parse()
+
+    slave.StartNewRpcServer(port)
 }
