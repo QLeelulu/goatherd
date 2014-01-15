@@ -13,6 +13,7 @@ const (
     ACT_CALL
     ACT_ADD
     ACT_DEL
+    ACT_GET
     ACT_MOD
     ACT_TAILF
     ACT_HEARTBEAT

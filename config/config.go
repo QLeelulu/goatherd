@@ -9,6 +9,12 @@ import (
     "github.com/BurntSushi/toml"
 )
 
+const (
+    DEFAULT_MASTER_ID   = "master"
+    DEFAULT_MASTER_HOST = "127.0.0.1"
+    DEFAULT_MASTER_PORT = 8018
+)
+
 type Config struct {
     Master     []MasterConfig
     MasterFile []string
@@ -134,7 +140,9 @@ func loadNewMaster(configFile string) (conf []MasterConfig, err error) {
         if err = masterConf.checkInclude(configDir); err != nil {
             return
         }
+        /* log.Printf("master conf:%+v", masterConf) */
     }
+
     return
 }
 
@@ -174,5 +182,14 @@ func LoadNewConfig(configFile string) (conf *Config, err error) {
     var configDir = path.Dir(configFile)
     err = conf.checkInclude(configDir)
 
+    for i, _ := range conf.Master {
+        masterConf := &conf.Master[i]
+        if masterConf.Port == 0 {
+            masterConf.Port = DEFAULT_MASTER_PORT
+        }
+        if masterConf.Id == "" {
+            masterConf.Id = DEFAULT_MASTER_ID
+        }
+    }
     return
 }

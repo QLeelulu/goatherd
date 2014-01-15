@@ -22,6 +22,7 @@ func NewArg() *Arg {
 type Ret struct {
     Err       error
     Id        string
+    Conf      *config.MasterConfig
     SlaveRets map[string]slave.Ret
 }
 

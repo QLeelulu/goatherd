@@ -107,37 +107,38 @@ func (this *Server) callSlave(slaveArg slave.Arg, slaveRet *slave.Ret) (err erro
     return
 }
 
-func (this *Server) getConfig(arg Arg) (err error) {
-    /* if arg.SlaveArg == nil { */
-    /* } */
+func (this *Server) getConfig(ret *Ret) (err error) {
+    ret.Conf = &this.conf
     return
 }
 
 func (this *Server) Eval(arg Arg, ret *Ret) (err error) {
-    if arg.IsTarget {
-    } else {
-        for id, sarg := range arg.SlaveArgs {
-            var sret = &slave.Ret{}
-            defer func(id string, sret *slave.Ret) {
-                ret.SlaveRets[id] = *sret
-            }(id, sret)
+    switch arg.Action {
+    case constant.ACT_GET:
+        err = this.getConfig(ret)
+        return
+    }
+    for id, sarg := range arg.SlaveArgs {
+        var sret = &slave.Ret{}
+        defer func(id string, sret *slave.Ret) {
+            ret.SlaveRets[id] = *sret
+        }(id, sret)
 
-            switch arg.Action {
-            case constant.ACT_CALL:
-                err = this.callSlave(sarg, sret)
-            case constant.ACT_ADD:
-                err = this.addSlave(sarg)
-            case constant.ACT_MOD:
-                err = this.reloadSlave(sarg)
-            case constant.ACT_DEL:
-                err = this.delSlave(sarg)
-            case constant.ACT_START:
-                err = this.startSlave(sarg)
-            case constant.ACT_STOP:
-                err = this.stopSlave(sarg)
-            default:
-                println("yamidie")
-            }
+        switch arg.Action {
+        case constant.ACT_CALL:
+            err = this.callSlave(sarg, sret)
+        case constant.ACT_ADD:
+            err = this.addSlave(sarg)
+        case constant.ACT_MOD:
+            err = this.reloadSlave(sarg)
+        case constant.ACT_DEL:
+            err = this.delSlave(sarg)
+        case constant.ACT_START:
+            err = this.startSlave(sarg)
+        case constant.ACT_STOP:
+            err = this.stopSlave(sarg)
+        default:
+            println("yamidie")
         }
     }
     return
@@ -153,6 +154,7 @@ func StartNewRpcServer(conf config.MasterConfig) (err error) {
     if e != nil {
         log.Fatal("listen error:", e)
     }
+    log.Print("master server will start at:", conf.Port)
     rpcServer.Accept(l)
     return
 }
