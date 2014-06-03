@@ -14,9 +14,14 @@ func TestLoadConf(t *testing.T) {
     /* } */
     /* for _, master := range conf.Master { */
     /* t.Logf("master : %+v\n", master.Id) */
-    /* for _, slave := range master.Slave { */
-    /* t.Logf("  slave : %+v\n", slave.Id) */
-    /* for _, process := range slave.Process { */
+    /* for _, guard := range master.Guard { */
+    /* for _, guard := range master.Guard { */
+    /* for _, guard := range master.Guard { */
+    /* for _, guard := range master.Guard { */
+    /* t.Logf("  guard : %+v\n", guard.Id) */
+    /* t.Logf("  guard : %+v\n", guard.Id) */
+    /* for _, process := range guard.Process { */
+    /* for _, process := range guard.Process { */
     /* t.Logf("    process : %+v\n", process.Id) */
     /* } */
     /* } */

@@ -7,12 +7,15 @@ import (
     "path"
 
     "github.com/BurntSushi/toml"
+    "goatherd/library/utils"
 )
 
 const (
     DEFAULT_MASTER_ID   = "master"
     DEFAULT_MASTER_HOST = "127.0.0.1"
     DEFAULT_MASTER_PORT = 8018
+    DEFAULT_NETWORK     = "tcp"
+    DEFAULT_SIGNAL      = 7
 )
 
 type Config struct {
@@ -26,6 +29,7 @@ type ProcessConfig struct {
     FileIn           string
     FileOut          string
     FileErr          string
+    FilePId          string
     AutoStart        bool
     AutoRestart      bool
     AutoRestartDelay uint
@@ -35,16 +39,15 @@ type ProcessConfig struct {
     Environment      map[string]string
 }
 
-type SlaveConfig struct {
-    Id             string
-    Host           string
-    Port           int
-    LogFile        string
-    BinPath        string
-    DefaultProcess ProcessConfig
-    ProcessModel   ProcessConfig
-    Process        []ProcessConfig
-    ProcessFile    []string
+type GuardConfig struct {
+    Id           string
+    Host         string
+    Port         int
+    LogFile      string
+    PidFile      string
+    ProcessModel ProcessConfig
+    Process      []ProcessConfig
+    ProcessFile  []string
 }
 
 type MasterConfig struct {
@@ -52,26 +55,47 @@ type MasterConfig struct {
     Host        string
     Port        int
     LogFile     string
+    PidFile     string
+    User        string
     AuthKeyFile string
-    SlaveModel  SlaveConfig
-    Slave       []SlaveConfig
-    SlaveFile   []string
+    GuardModel  GuardConfig
+    Guard       []GuardConfig
+    GuardFile   []string
 }
 
-//slave.conf
+//guard.conf
 func loadNewProcess(configFile string) (conf []ProcessConfig, err error) {
     log.Printf("load process config file:%+v", configFile)
-    var newConf = new(SlaveConfig)
+    var newConf = new(GuardConfig)
     if _, err = toml.DecodeFile(configFile, newConf); err != nil {
         err = errors.New("process config decode faild:" + err.Error())
         return
     }
     conf = newConf.Process
+    for i, _ := range conf {
+        pconf := &conf[i]
+        if err = pconf.Test(); err != nil {
+            return
+        }
+    }
+    return
+}
+
+func (this ProcessConfig) Test() (err error) {
+    if err = utils.TryOpenFile(this.FileIn, os.O_RDONLY); err != nil {
+        return
+    }
+    if err = utils.TryOpenFile(this.FileOut, os.O_WRONLY|os.O_CREATE); err != nil {
+        return
+    }
+    if err = utils.TryOpenFile(this.FileErr, os.O_WRONLY|os.O_CREATE); err != nil {
+        return
+    }
     return
 }
 
 //process.conf
-func (this *SlaveConfig) checkInclude(configDir string) (err error) {
+func (this *GuardConfig) checkInclude(configDir string) (err error) {
     for _, processFile := range this.ProcessFile {
         if !path.IsAbs(processFile) {
             processFile = path.Join(configDir, processFile)
@@ -85,19 +109,50 @@ func (this *SlaveConfig) checkInclude(configDir string) (err error) {
     return
 }
 
-//slave.conf
-func loadNewSlave(configFile string) (conf []SlaveConfig, err error) {
-    log.Printf("load slave config file:%+v", configFile)
-    var newConf = new(MasterConfig)
-    if _, err = toml.DecodeFile(configFile, newConf); err != nil {
-        err = errors.New("slave config decode faild:" + err.Error())
+func (this GuardConfig) Test() (err error) {
+    if err = utils.TryOpenFile(this.LogFile, os.O_WRONLY|os.O_CREATE); err != nil {
         return
     }
-    conf = newConf.Slave
+
+    for _, pconf := range this.Process {
+        if err = pconf.Test(); err != nil {
+            return
+        }
+    }
+    return
+}
+
+//guard.conf
+func loadNewGuard(configFile string) (conf []GuardConfig, err error) {
+    log.Printf("load guard config file:%+v", configFile)
+    var newConf = new(MasterConfig)
+    if _, err = toml.DecodeFile(configFile, newConf); err != nil {
+        err = errors.New("guard config decode faild:" + err.Error())
+        return
+    }
+    conf = newConf.Guard
 
     for i, _ := range conf {
-        slaveConf := &conf[i]
-        if err = slaveConf.checkInclude(path.Dir(configFile)); err != nil {
+        guardConf := &conf[i]
+        if err = guardConf.checkInclude(path.Dir(configFile)); err != nil {
+            return
+        }
+        err = guardConf.Test()
+    }
+    return
+}
+
+func (this MasterConfig) Test() (err error) {
+    if err = utils.TryOpenFile(this.LogFile, os.O_WRONLY|os.O_CREATE); err != nil {
+        return
+    }
+
+    if err = utils.TryOpenFile(this.AuthKeyFile, os.O_RDONLY); err != nil {
+        return
+    }
+
+    for _, gconf := range this.Guard {
+        if err = gconf.Test(); err != nil {
             return
         }
     }
@@ -105,21 +160,21 @@ func loadNewSlave(configFile string) (conf []SlaveConfig, err error) {
 }
 
 func (this *MasterConfig) checkInclude(configDir string) (err error) {
-    for i, _ := range this.Slave {
-        slave := &this.Slave[i]
-        if err = slave.checkInclude(configDir); err != nil {
+    for i, _ := range this.Guard {
+        guard := &this.Guard[i]
+        if err = guard.checkInclude(configDir); err != nil {
             return
         }
     }
 
-    for _, slaveFile := range this.SlaveFile {
-        if !path.IsAbs(slaveFile) {
-            slaveFile = path.Join(configDir, slaveFile)
+    for _, guardFile := range this.GuardFile {
+        if !path.IsAbs(guardFile) {
+            guardFile = path.Join(configDir, guardFile)
         }
-        if slaveConf, err := loadNewSlave(slaveFile); err != nil {
+        if guardConf, err := loadNewGuard(guardFile); err != nil {
             return err
         } else {
-            this.Slave = append(this.Slave, slaveConf...)
+            this.Guard = append(this.Guard, guardConf...)
         }
     }
     return
@@ -138,6 +193,9 @@ func loadNewMaster(configFile string) (conf []MasterConfig, err error) {
     for i, _ := range conf {
         masterConf := &conf[i]
         if err = masterConf.checkInclude(configDir); err != nil {
+            return
+        }
+        if err = masterConf.Test(); err != nil {
             return
         }
         /* log.Printf("master conf:%+v", masterConf) */
@@ -167,6 +225,13 @@ func (this *Config) checkInclude(configDir string) (err error) {
     return
 }
 
+func (this Config) Test() (err error) {
+    if len(this.Master) < 1 {
+        err = errors.New("master config missed")
+    }
+    return
+}
+
 func LoadNewConfig(configFile string) (conf *Config, err error) {
     if !path.IsAbs(configFile) {
         pwd, _ := os.Getwd()
@@ -179,17 +244,14 @@ func LoadNewConfig(configFile string) (conf *Config, err error) {
         err = errors.New("config decode faild:" + err.Error())
         return
     }
-    var configDir = path.Dir(configFile)
-    err = conf.checkInclude(configDir)
 
-    for i, _ := range conf.Master {
-        masterConf := &conf.Master[i]
-        if masterConf.Port == 0 {
-            masterConf.Port = DEFAULT_MASTER_PORT
-        }
-        if masterConf.Id == "" {
-            masterConf.Id = DEFAULT_MASTER_ID
-        }
+    var configDir = path.Dir(configFile)
+    if err = conf.checkInclude(configDir); err != nil {
+        return
+    }
+
+    if err = conf.Test(); err != nil {
+        return
     }
     return
 }
