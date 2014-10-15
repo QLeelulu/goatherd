@@ -1,1 +1,0 @@
-for i in `seq 1 3`;do echo hello;sleep 1;done

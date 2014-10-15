@@ -1,1 +1,0 @@
-while true;do echo `date` process_test;sleep 1;done

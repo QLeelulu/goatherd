@@ -3,15 +3,16 @@ package process
 import (
     "fmt"
     "io/ioutil"
+    "os"
     "testing"
 
-    "goatherd/config"
+    "sunteng/commons/constant"
 )
 
 var script = "test.sh"
 
-var conf = config.ProcessConfig{
-    Id:      "test",
+var conf = Config{
+    Name:    "test",
     Command: fmt.Sprintf("sh %s", script),
 }
 
@@ -24,6 +25,7 @@ func init() {
 }
 
 func TestStart(t *testing.T) {
+    defer os.Remove("test.sh")
     var ctrl, err = NewCtrl(conf)
     if err != nil {
         t.Fatalf("newprocessctrl faild:%s:%+v", err.Error(), conf)
@@ -33,7 +35,7 @@ func TestStart(t *testing.T) {
         t.Fatalf("start faild:%s:%+v", err.Error(), *ctrl)
     }
 
-    if ctrl.GetStatus() != PROCESS_STATUS_STARTED {
+    if ctrl.GetStatus() != constant.STATUS_STARTED {
         t.Fatal("start faild")
     }
 
@@ -41,7 +43,7 @@ func TestStart(t *testing.T) {
         t.Fatalf("stop faild:%s:%+v", err.Error(), *ctrl)
     }
 
-    if ctrl.GetStatus() != PROCESS_STATUS_STOPED {
+    if ctrl.GetStatus() != constant.STATUS_STOPPED {
         t.Fatal("stop faild")
     }
 }
