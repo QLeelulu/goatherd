@@ -2,6 +2,7 @@ package collie
 
 import (
     "errors"
+    "io/ioutil"
     "net/http"
     "strconv"
     "strings"
@@ -61,8 +62,8 @@ func (this *httpServer) Persistence() (err error) {
     if err != nil {
         return
     }
-    // err = ioutil.WriteFile(this.ctx.conf.ConfigPath, []byte(buf), 0666)
-    log.Logf("persistence : %s", buf)
+    err = ioutil.WriteFile(this.ctx.conf.ConfigPath, []byte(buf), 0666)
+    // log.Logf("persistence : %s", buf)
     return
 }
 
@@ -162,12 +163,26 @@ func (this *httpServer) doSheepGetStatus(r *http.Request) (interface{}, error) {
         return nil, web.HTTPError{400, "INVALID_REQUEST"}
     }
 
-    name, err := reqParams.Get("name")
-    if err != nil {
-        return nil, web.HTTPError{400, "MISSING_ARG_NAME"}
+    var names []string
+    all, err := reqParams.Get("all")
+    if err == nil && all == "true" {
+        for name, _ := range this.ctx.sheeps {
+            names = append(names, name)
+        }
+    } else {
+        names, err = reqParams.GetAll("name")
+        if err != nil {
+            return nil, web.HTTPError{400, "MISSING_ARG_NAME"}
+        }
     }
 
-    return this.ctx.SheepGetStatus(name)
+    var res = make(map[string]string)
+    err = util.MultiWaitMap("sheep status", names, func(name interface{}) error {
+        status, _err := this.ctx.SheepGetStatus(name.(string))
+        res[name.(string)] = status
+        return _err
+    })
+    return res, err
 }
 
 func (this *httpServer) doSheepTail(r *http.Request) (interface{}, error) {

@@ -32,6 +32,7 @@ func (this *Collied) LoadConfig(conf ContexConfig) (err error) {
         this.sheeps[name] = sheep
     }
     this.conf.ProcessModel = conf.ProcessModel
+    this.conf.ConfigPath = conf.ConfigPath
     return
 }
 
@@ -47,7 +48,7 @@ func (this *Collied) GetSheepConfig(name string) (interface{}, error) {
     return sheep.Config, nil
 }
 
-func (this *Collied) SheepGetStatus(name string) (interface{}, error) {
+func (this *Collied) SheepGetStatus(name string) (string, error) {
     sheep, ok := this.sheeps[name]
     if !ok {
         return constant.STATUS_UNKNOWN, errors.New("get sheep config faild : " + name)
