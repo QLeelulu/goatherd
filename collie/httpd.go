@@ -5,7 +5,6 @@ import (
     "net/http"
     "strconv"
     "strings"
-    "sync"
 
     "goatherd/process"
     "sunteng/commons/confutil"
@@ -212,27 +211,9 @@ func (this *httpServer) doSheepReload(r *http.Request) (interface{}, error) {
     }
     ctx.Expand()
 
-    // err = util.MultiWaitMap("sheep reload", ctx.Process, func(conf interface{}) {
-    // return this.ctx.SheepReload(*conf.(*process.Config))
-    // })
-    var w sync.WaitGroup
-    for _, conf := range ctx.Process {
-        w.Add(1)
-        go func() {
-            if _err := this.ctx.SheepReload(*conf); err != nil {
-                if err != nil {
-                    err = errors.New(err.Error() + _err.Error() + ",")
-                } else {
-                    err = errors.New(_err.Error() + ",")
-                }
-            }
-            w.Done()
-        }()
-    }
-    w.Wait()
-    if err != nil {
-        err = errors.New("sheep reload faild : " + err.Error())
-    }
+    err = util.MultiWaitMap("sheep reload", ctx.Process, func(conf interface{}) error {
+        return this.ctx.SheepReload(*conf.(*process.Config))
+    })
 
     err = this.Persistence()
     return "ok", err
@@ -310,27 +291,9 @@ func (this *httpServer) doSheepAdd(r *http.Request) (interface{}, error) {
     }
     ctx.Expand()
 
-    // err = util.MultiWaitMap("sheep add", names, func(conf interface{}) {
-    // return this.ctx.SheepAdd(*conf.(*process.Config))
-    // })
-    var w sync.WaitGroup
-    for _, conf := range ctx.Process {
-        w.Add(1)
-        go func() {
-            if _err := this.ctx.SheepAdd(*conf); err != nil {
-                if err != nil {
-                    err = errors.New(err.Error() + _err.Error() + ",")
-                } else {
-                    err = errors.New(_err.Error() + ",")
-                }
-            }
-            w.Done()
-        }()
-    }
-    w.Wait()
-    if err != nil {
-        err = errors.New("sheep add faild : " + err.Error())
-    }
+    err = util.MultiWaitMap("sheep add", ctx.Process, func(conf interface{}) error {
+        return this.ctx.SheepAdd(*conf.(*process.Config))
+    })
 
     err = this.Persistence()
     return "ok", err
