@@ -11,14 +11,16 @@ import (
 
 var (
     port       int
-    id         string
+    name       string
+    join       string
     sheepFile  string
     configFile string
 )
 
 func init() {
     flag.IntVar(&port, "port", 0, "collie服务端口")
-    flag.StringVar(&id, "id", "collie", "collie服务id")
+    flag.StringVar(&name, "name", "collie", "collie服务name")
+    flag.StringVar(&join, "join", "", "lead服务地址")
     flag.StringVar(&configFile, "config", "/etc/goatherd.toml", "collie配置文件路径")
     flag.StringVar(&sheepFile, "sheep_config", "", "sheep配置文件路径")
 }
@@ -67,5 +69,5 @@ func main() {
 
     // log.Fatalf("config : %+v", conf)
     log.Print("goatherd will start at:", conf.Http.Port)
-    log.Fatal(collie.NewHttpServe(conf.Config))
+    log.Fatal(collie.NewHttpServe(conf.Config, join))
 }

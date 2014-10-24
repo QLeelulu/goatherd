@@ -1,11 +1,11 @@
 package collie
 
 type Contex struct {
-    *Collied
+	*Collied
 }
 
 func NewContex() *Contex {
-    return &Contex{
-        Collied: NewCollied(),
-    }
+	return &Contex{
+		Collied: NewCollied(),
+	}
 }

@@ -1,0 +1,85 @@
+Name = "collie_01"
+DataDir = "/data/logs/goatherd"
+LogLevel = 6
+ConfigPath = ""
+
+[ProcessModel]
+  Name = "sheep"
+  Collie = ""
+  Command = "sh test.sh"
+  FileIn = ""
+  FileOut = "/data/logs/goatherd/sheep.log"
+  FileErr = ""
+  FilePId = "/data/logs/goatherd/sheep.pid"
+  AutoStart = true
+  AutoRestart = true
+  AutoRestartDelay = 0
+  StartRetries = 5
+  NumProcs = 1
+  StopSignal = 7
+
+[Process]
+  [Process.sheep_01]
+    Name = "sheep_01"
+    Collie = ""
+    Command = "sh test.sh"
+    FileIn = ""
+    FileOut = "/data/logs/goatherd/sheep_01.log"
+    FileErr = ""
+    FilePId = "/data/logs/goatherd/sheep.pid"
+    AutoStart = true
+    AutoRestart = true
+    AutoRestartDelay = 0
+    StartRetries = 5
+    NumProcs = 1
+    StopSignal = 7
+  [Process.sheep_02]
+    Name = "sheep_02"
+    Collie = ""
+    Command = "sh test.sh"
+    FileIn = ""
+    FileOut = "/data/logs/goatherd/sheep_02.log"
+    FileErr = ""
+    FilePId = "/data/logs/goatherd/sheep.pid"
+    AutoStart = true
+    AutoRestart = true
+    AutoRestartDelay = 0
+    StartRetries = 5
+    NumProcs = 1
+    StopSignal = 7
+  [Process.sheep_03]
+    Name = "sheep_03"
+    Collie = ""
+    Command = "sh test.sh"
+    FileIn = ""
+    FileOut = "/data/logs/goatherd/sheep_03.log"
+    FileErr = ""
+    FilePId = "/data/logs/goatherd/sheep.pid"
+    AutoStart = true
+    AutoRestart = true
+    AutoRestartDelay = 0
+    StartRetries = 5
+    NumProcs = 1
+    StopSignal = 7
+  [Process.sheep_04]
+    Name = "sheep_04"
+    Collie = ""
+    Command = "sh test.sh"
+    FileIn = ""
+    FileOut = "/data/logs/goatherd/sheep_03.log"
+    FileErr = ""
+    FilePId = "/data/logs/goatherd/sheep.pid"
+    AutoStart = true
+    AutoRestart = true
+    AutoRestartDelay = 0
+    StartRetries = 5
+    NumProcs = 1
+    StopSignal = 7
+
+[Elect]
+  Host = "127.0.0.1"
+  Port = 4200
+
+[Http]
+  Host = "127.0.0.1"
+  Port = 4100

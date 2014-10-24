@@ -7,6 +7,8 @@ import (
 
 type Config struct {
     Name             string
+    Tags             []string
+    Collie           string
     Command          string
     FileIn           string
     FileOut          string
