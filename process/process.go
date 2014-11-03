@@ -3,9 +3,6 @@ package process
 import (
     "errors"
     "fmt"
-    "os"
-    "os/exec"
-    "strings"
     "sync"
     "syscall"
     "time"
@@ -16,31 +13,29 @@ import (
 )
 
 type Sheep struct {
-    Config
-    Cmd    *exec.Cmd
+    *Config
     mutex  sync.Mutex
     Status string
 }
 
-func NewSheep() (ctrl *Sheep) {
-    ctrl = new(Sheep)
-    return
+func NewSheep() *Sheep {
+    return new(Sheep)
 }
 
-func (this *Sheep) GetStatus() (status string) {
+func (this *Sheep) GetStatus() string {
     return this.Status
 }
 
-func (this *Sheep) GetConfig() (conf Config) {
+func (this *Sheep) GetConfig() *Config {
     return this.Config
 }
 
-func (this *Sheep) SetConfig(conf Config) (err error) {
+func (this *Sheep) SetConfig(conf *Config) (err error) {
     this.Config = conf
     return
 }
 
-func (this *Sheep) Create(conf Config) (err error) {
+func (this *Sheep) Create(conf *Config) (err error) {
     if err = conf.Check(); err != nil {
         return
     }
@@ -55,7 +50,7 @@ func (this *Sheep) Create(conf Config) (err error) {
     return
 }
 
-func (this *Sheep) Update(conf Config) (err error) {
+func (this *Sheep) Update(conf *Config) (err error) {
     if err = conf.Check(); err != nil {
         return
     }
@@ -79,50 +74,19 @@ func (this *Sheep) Update(conf Config) (err error) {
 
 func (this *Sheep) Start() (err error) {
     log.Logf("sheep start : %+v", this.Name)
-    //cmd
-    cmdArr := strings.Split(this.Command, " ")
-    cmdId := cmdArr[0]
-    cmdArgs := []string{}
-    if len(cmdArr) > 1 {
-        cmdArgs = cmdArr[1:]
+    if err = this.Config.InitAll(); err != nil {
+        return
     }
-    var cmd = exec.Command(cmdId, cmdArgs...)
-    //stdin
-    if this.FileIn == "" {
-        cmd.Stdin = os.Stdin
-    } else if fd, err := os.Open(this.FileIn); err == nil {
-        cmd.Stdin = fd
-    } else {
-        return errors.New("process config error : bad input file : " + err.Error())
-    }
-    //stdout
-    if this.FileOut == "" {
-        cmd.Stdout = os.Stdout
-    } else if fd, err := os.OpenFile(this.FileOut, os.O_WRONLY|os.O_CREATE, 0666); err == nil {
-        cmd.Stdout = fd
-    } else {
-        return errors.New("process config error : bad output file : " + err.Error())
-    }
-    //stderr
-    if this.FileErr == "" {
-        cmd.Stderr = os.Stderr
-    } else if fd, err := os.OpenFile(this.FileErr, os.O_WRONLY|os.O_CREATE, 0666); err == nil {
-        cmd.Stderr = fd
-    } else {
-        return errors.New("process config error : bad error file : " + err.Error())
-    }
-    //kill signal
-    if this.StopSignal == uint(syscall.Signal(0)) {
-        this.StopSignal = uint(syscall.SIGKILL)
-    }
-    this.Cmd = cmd
+
     this.Status = constant.STATUS_STARTING
-    err = this.Cmd.Start()
+
+    err = this.cmd.Start()
     if err != nil {
         this.Status = constant.STATUS_START_FAILED
         log.Errorf("start faild:%s:%+v", err.Error(), *this)
         return err
     }
+
     log.Logf("sheep %s started", this.Name)
     go this.watch()
     this.Status = constant.STATUS_STARTED
@@ -131,7 +95,7 @@ func (this *Sheep) Start() (err error) {
 }
 
 func (this *Sheep) watch() {
-    err := this.Cmd.Wait()
+    err := this.cmd.Wait()
     fmt.Println(this.Name, "has exit.")
     if err != nil {
         fmt.Printf("[%s] got error: %s\n", this.Name, err.Error())
@@ -157,19 +121,19 @@ func (this *Sheep) Restart() (err error) {
 }
 
 func (this *Sheep) Stop() (err error) {
-    if this.Cmd.Process == nil {
+    if this.cmd.Process == nil {
         return errors.New(fmt.Sprintf("%s not started.", this.Name))
     }
 
-    if this.Cmd.ProcessState == nil {
+    if this.cmd.ProcessState == nil {
         log.Log("process state unvailable")
-    } else if this.Cmd.ProcessState.Exited() {
+    } else if this.cmd.ProcessState.Exited() {
         return errors.New(fmt.Sprintf("%s has stoped.", this.Name))
     }
 
     this.Status = constant.STATUS_STOPING
     log.Logf("signal:%d", this.StopSignal)
-    if err = this.Cmd.Process.Signal(syscall.Signal(this.StopSignal)); err == nil {
+    if err = this.cmd.Process.Signal(syscall.Signal(this.StopSignal)); err == nil {
         this.Status = constant.STATUS_STOPPED
     } else {
         log.Error("stop faild:", err.Error())
@@ -178,7 +142,8 @@ func (this *Sheep) Stop() (err error) {
 }
 
 func (this *Sheep) Tail(num int, forever bool) (lines [][]byte, err error) {
-    return util.ReadLastLines(this.FileOut, num)
+    fileOut := this.GetDataFile(this.Name + ".log")
+    return util.ReadLastLines(fileOut, num)
 }
 
 func (this *Sheep) Tailf() (err error) {

@@ -8,14 +8,16 @@ import (
     "io/ioutil"
     "net/http"
     "path"
+    "reflect"
     "strconv"
 
-    "goatherd/process"
     "sunteng/commons/confutil"
     "sunteng/commons/log"
     "sunteng/commons/util"
     "sunteng/commons/util/toml_util"
     "sunteng/commons/web"
+
+    "goatherd/process"
 )
 
 type httpServer struct {
@@ -30,7 +32,7 @@ func NewHttpServe(conf Config, leader string) (err error) {
 
     // 初始化daemon配置
     if err = conf.DaemonBase.InitAll(); err != nil {
-        log.Noticef("new http serve daemon base init faild: %+v ---  %s\n ", conf, err.Error())
+        log.Noticef("new http serve daemon base init faild: %+v ---  %s\n ", conf.DaemonBase, err.Error())
         return
     }
     server.DaemonBase = conf.DaemonBase
@@ -76,6 +78,7 @@ func (this *httpServer) Persistence() (err error) {
         return
     }
     err = ioutil.WriteFile(this.ctx.conf.ConfigPath, []byte(buf), 0666)
+    // log.Logf("persistence : %s", buf)
     return
 }
 
@@ -83,7 +86,7 @@ func (this *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     peers := this.elect.doPeers()
 
     // get peers
-    var ret web.ApiResponse
+    var ret = web.ApiResponse{200, "ok", nil}
     var collies = make(PeerConfigMap)
     if len(r.URL.Query()["collie"]) == 0 {
         collies = peers
@@ -98,16 +101,21 @@ func (this *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     }
 
     for name, peer := range collies {
-        var resp web.ApiResponse
         if name == this.Name {
-            resp = this.router(r)
+            ret.Set(name, this.router(r))
         } else {
             query := r.URL.Query()
             query["collie"] = []string{name}
-            resp = this.proxy(fmt.Sprintf("http://%s%s?%s", peer.HttpAddr, r.URL.Path, query.Encode()), r.Body)
+            resps := this.proxy(fmt.Sprintf("http://%s%s?%s", peer.HttpAddr, r.URL.Path, query.Encode()), r.Body)
+            if _, ok := resps.Data.(map[string]interface{}); ok {
+                for name, resp := range resps.Data.(map[string]interface{}) {
+                    ret.Set(name, resp)
+                }
+            } else {
+                log.Errorf("bad format : %+v", reflect.TypeOf(resps.Data))
+            }
         }
 
-        ret.Set(name, resp)
     }
     ret.Write(w)
 }
@@ -149,17 +157,9 @@ func (this *httpServer) router(r *http.Request) (resp web.ApiResponse) {
         code, err = 400, errors.New("bad path : "+r.URL.Path)
     }
     if err != nil {
-        resp = web.ApiResponse{
-            StatusCode: 500,
-            StatusTxt:  err.Error(),
-            Data:       data,
-        }
+        resp = web.ApiResponse{500, err.Error(), data}
     } else {
-        resp = web.ApiResponse{
-            StatusCode: code,
-            StatusTxt:  "ok",
-            Data:       data,
-        }
+        resp = web.ApiResponse{code, "ok", data}
     }
     return
 }
@@ -215,27 +215,27 @@ func (this *httpServer) readBody(r *web.ReqParams) (ctx ContexConfig, err error)
     if ctx.ProcessModel.Name == "" {
         ctx.ProcessModel = this.ctx.conf.ProcessModel
     }
-    ctx.Expand()
     for name, proc := range ctx.Process {
         if proc.Collie != "" && proc.Collie != this.Name {
             delete(ctx.Process, name)
         }
     }
+    ctx.Expand()
     return
 }
 
 func (this *httpServer) doCollieGetConfig() (Config, error) {
     var conf = Config{
-        Http:       this.NetBase,
-        DaemonBase: this.DaemonBase,
-        ContexConfig: ContexConfig{
+        Http:  this.NetBase,
+        Elect: this.elect.NetBase,
+        ContexConfig: &ContexConfig{
+            DaemonBase:   this.DaemonBase,
             ProcessModel: this.ctx.conf.ProcessModel,
             Process:      make(map[string]*process.Config),
         },
-        Elect: this.elect.NetBase,
     }
     for name, sheep := range this.ctx.sheeps {
-        conf.Process[name] = &sheep.Config
+        conf.Process[name] = sheep.Config
     }
     return conf, nil
 }
@@ -322,7 +322,7 @@ func (this *httpServer) doSheepReload(r *http.Request) (util.WaitRetMap, error) 
     }
 
     rets, err := util.MultiWait(ctx.Process, func(conf interface{}) util.WaitRet {
-        return util.WaitRet{nil, this.ctx.SheepReload(*conf.(*process.Config))}
+        return util.WaitRet{nil, this.ctx.SheepReload(conf.(*process.Config))}
     })
 
     this.Persistence()
@@ -401,7 +401,7 @@ func (this *httpServer) doSheepAdd(r *http.Request) (util.WaitRetMap, error) {
     }
 
     rets, err := util.MultiWait(ctx.Process, func(conf interface{}) util.WaitRet {
-        return util.WaitRet{nil, this.ctx.SheepAdd(*conf.(*process.Config))}
+        return util.WaitRet{nil, this.ctx.SheepAdd(conf.(*process.Config))}
     })
 
     this.Persistence()

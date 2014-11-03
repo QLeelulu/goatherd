@@ -3,6 +3,8 @@ package collie
 import (
     "bytes"
     "encoding/json"
+    "errors"
+    "fmt"
     "net/http"
     "os"
     "sunteng/commons/confutil"
@@ -42,16 +44,39 @@ func NewElectServer(conf Config, leader string) (server *electServer, err error)
         return
     }
 
-    if err = server.syncCluster(); err != nil {
-        return
-    }
-
     go func() {
         if err = server.ServeHttp(); err != nil {
             os.Exit(1)
         }
     }()
+
+    go func() {
+        time.Sleep(time.Second)
+        if err = server.syncLoop(); err != nil {
+            os.Exit(2)
+        }
+    }()
     return
+}
+
+func (this *electServer) syncLoop() error {
+    this.syncCluster()
+    timeup := time.After(time.Minute)
+    tick := time.Tick(10 * time.Second)
+    var syncd bool
+    for {
+        select {
+        case <-tick:
+            if err := this.syncCluster(); err == nil {
+                syncd = true
+            }
+        case <-timeup:
+            if !syncd {
+                return errors.New("sync timeup")
+            }
+        }
+    }
+    return nil
 }
 
 func (this *electServer) ServeHttp() (err error) {
@@ -60,13 +85,14 @@ func (this *electServer) ServeHttp() (err error) {
 }
 
 func (this *electServer) InitRaftServer() (err error) {
+    // raft.SetLogLevel(raft.Trace)
     transporter := raft.NewHTTPTransporter("/raft", 200*time.Millisecond)
     this.raftServer, err = raft.NewServer(this.Name, this.GetDataDir(), transporter, nil, nil, "")
     if err != nil {
         return
     }
     transporter.Install(this.raftServer, this.mux)
-    this.raftServer.Start()
+    err = this.raftServer.Start()
     return
 }
 
@@ -74,6 +100,7 @@ func (this *electServer) InitRaftCluster(leader string) (err error) {
     if leader != "" {
         if !this.raftServer.IsLogEmpty() {
             log.Log("cannot join with exist log")
+            return
         }
         if err = this.JoinLeader(leader); err != nil {
             return
@@ -83,7 +110,7 @@ func (this *electServer) InitRaftCluster(leader string) (err error) {
             return
         }
     } else {
-        log.Log("recovered from log")
+        log.Notice("recovered from log")
     }
     return
 }
@@ -111,7 +138,10 @@ func (this *electServer) JoinLeader(leader string) (err error) {
     if err != nil {
         return
     }
-    resp.Body.Close()
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
+        return fmt.Errorf("bad status code : %+v", resp.StatusCode)
+    }
     return
 }
 
@@ -122,10 +152,14 @@ func (this *electServer) Router(w http.ResponseWriter, r *http.Request) {
         err = this.doJoin(r)
     case "/peers":
         err = json.NewEncoder(w).Encode(this.doPeers())
+    case "/leader":
+        err = json.NewEncoder(w).Encode(this.doLeader())
     case "/peer_config":
         err = json.NewEncoder(w).Encode(this.doPeerConfig())
     case "/peer_exchange":
-        this.doExchangePeerConfig(r, w)
+        err = this.doExchangePeerConfig(r, w)
+    case "/stat":
+        err = this.doStat(w)
     default:
         resp := web.ApiResponse{404, "NOT_FOUND", nil}
         resp.Write(w)
@@ -133,18 +167,29 @@ func (this *electServer) Router(w http.ResponseWriter, r *http.Request) {
     if err != nil {
         resp := web.ApiResponse{502, err.Error(), nil}
         resp.Write(w)
+        log.Errorf("%s handel faild : %s", r.URL.Path, err.Error())
     }
 }
 
+func (this *electServer) doStat(w http.ResponseWriter) error {
+    return json.NewEncoder(w).Encode(map[string]interface{}{
+        "leader":  this.raftServer.Leader(),
+        "running": this.raftServer.Running(),
+        "peers":   this.raftServer.Peers(),
+        "stat":    this.raftServer.GetState(),
+        "nodes":   this.peers,
+    })
+}
+
 func (this *electServer) syncCluster() (err error) {
-    var b bytes.Buffer
-    if err = json.NewEncoder(&b).Encode(this.peerConfig); err != nil {
+    b, err := json.Marshal(this.peerConfig)
+    if err != nil {
         return
     }
 
     var peers = make(PeerConfigMap)
     for name, peer := range this.raftServer.Peers() {
-        resp, err := http.Post(peer.ConnectionString+"/peer_exchange", "application/json", &b)
+        resp, err := http.Post(peer.ConnectionString+"/peer_exchange", "application/json", bytes.NewBuffer(b))
         if err != nil {
             log.Errorf("post faild : %s", err.Error())
             continue
@@ -167,14 +212,15 @@ func (this *electServer) syncCluster() (err error) {
     return
 }
 
-func (this *electServer) doExchangePeerConfig(r *http.Request, w http.ResponseWriter) {
+func (this *electServer) doExchangePeerConfig(r *http.Request, w http.ResponseWriter) error {
     var peerConfig = new(PeerConfig)
     if err := json.NewDecoder(r.Body).Decode(peerConfig); err != nil {
-        w.WriteHeader(204)
+        return err
     } else {
         this.peers[peerConfig.Name] = peerConfig
         json.NewEncoder(w).Encode(this.peerConfig)
     }
+    return nil
 }
 
 func (this *electServer) doPeerConfig() *PeerConfig {
@@ -185,12 +231,8 @@ func (this *electServer) doPeers() PeerConfigMap {
     return this.peers
 }
 
-// func (this *electServer) doLeader() (string, string) {
-// return this.raftServer.Leader(), ""
-// }
-
-func (this *electServer) doLeader(r *http.Request) (leader string, err error) {
-    return
+func (this *electServer) doLeader() string {
+    return this.raftServer.Leader()
 }
 
 // func (this *electServer) doMachines(r *http.Request) (map[string]string, error) {
@@ -216,5 +258,10 @@ func (this *electServer) doJoin(r *http.Request) error {
         return web.HTTPError{400, "MSG_ERROR"}
     }
     _, err := this.raftServer.Do(&command)
-    return err
+    if err != nil {
+        log.Logf("raft do faild : %+v", err.Error())
+        return err
+    }
+    log.Logf("raft join success")
+    return nil
 }

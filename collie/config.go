@@ -13,19 +13,21 @@ type PeerConfig struct {
 }
 
 type ContexConfig struct {
+    confutil.DaemonBase
     ConfigPath   string
     ProcessModel process.Config
     Process      map[string]*process.Config
 }
 
 type Config struct {
-    confutil.DaemonBase
-    ContexConfig
+    *ContexConfig
     Elect confutil.NetBase
     Http  confutil.NetBase
 }
 
 func (this *ContexConfig) Expand() {
+    this.ProcessModel.DataDir = this.GetDataDir()
+    this.ProcessModel.Collie = this.Name
     for name, processConf := range this.Process {
         processConf.Name = name
         processConf.Expand(this.ProcessModel)

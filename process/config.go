@@ -1,19 +1,19 @@
 package process
 
 import (
+    "errors"
     "os"
-    "sunteng/commons/util"
+    "os/exec"
+    "strings"
+    "sunteng/commons/confutil"
+    "syscall"
 )
 
 type Config struct {
-    Name             string
+    confutil.DaemonBase
     Tags             []string
     Collie           string
     Command          string
-    FileIn           string
-    FileOut          string
-    FileErr          string
-    FilePId          string
     AutoStart        bool
     AutoRestart      bool
     AutoRestartDelay uint
@@ -21,20 +21,46 @@ type Config struct {
     NumProcs         uint
     StopSignal       uint
     Environment      map[string]string
+    cmd              *exec.Cmd
 }
 
-func (this *Config) Check() (err error) {
-    if err = util.TryOpenFile(this.FileIn, os.O_RDONLY); err != nil {
+func (this *Config) Check() error {
+    // if !util.DirExist(this.DataDir) {
+    // return errors.New("config home not avalaible : " + this.Home)
+    // }
+    return nil
+}
+
+func (this *Config) InitAll() (err error) {
+    // daemon base
+    if err = this.DaemonBase.InitAll(); err != nil {
         return
     }
-    if err = util.TryOpenFile(this.FileOut, os.O_WRONLY|os.O_CREATE); err != nil {
-        return
+
+    //cmd
+    cmdArr := strings.Split(this.Command, " ")
+    cmdId := cmdArr[0]
+    cmdArgs := []string{}
+    if len(cmdArr) > 1 {
+        cmdArgs = cmdArr[1:]
     }
-    if err = util.TryOpenFile(this.FileErr, os.O_WRONLY|os.O_CREATE); err != nil {
-        return
+    this.cmd = exec.Command(cmdId, cmdArgs...)
+
+    //stdout
+    fileOut := this.GetDataFile(this.Name + ".log")
+    if this.cmd.Stdout, err = os.OpenFile(fileOut, os.O_WRONLY|os.O_CREATE, 0666); err != nil {
+        return errors.New("process config error : bad output file : " + err.Error())
     }
-    if err = util.TryOpenFile(this.FilePId, os.O_WRONLY|os.O_CREATE); err != nil {
-        return
+
+    //stderr
+    fileErr := this.GetDataFile(this.Name + ".err")
+    if this.cmd.Stderr, err = os.OpenFile(fileErr, os.O_WRONLY|os.O_CREATE, 0666); err != nil {
+        return errors.New("process config error : bad error file : " + err.Error())
+    }
+
+    //kill signal
+    if this.StopSignal == uint(syscall.Signal(0)) {
+        this.StopSignal = uint(syscall.SIGKILL)
     }
     return
 }
@@ -43,17 +69,14 @@ func (this *Config) Expand(modelConfig Config) {
     if this.Name == "" {
         this.Name = modelConfig.Name
     }
+    if this.DataDir == "" {
+        this.DataDir = modelConfig.DataDir
+    }
+    if this.Collie == "" {
+        this.Collie = modelConfig.Collie
+    }
     if this.Command == "" {
         this.Command = modelConfig.Command
-    }
-    if this.FileOut == "" {
-        this.FileOut = modelConfig.FileOut
-    }
-    if this.FileErr == "" {
-        this.FileErr = modelConfig.FileErr
-    }
-    if this.FilePId == "" {
-        this.FilePId = modelConfig.FilePId
     }
     if this.AutoRestartDelay == 0 {
         this.AutoRestartDelay = modelConfig.AutoRestartDelay
